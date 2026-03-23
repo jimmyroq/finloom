@@ -23,17 +23,20 @@
 
 ---
 
-## Phase 2: Scale 📈
+## Phase 1b: US + European Stocks (required for competition) 🏗️
 
 ### US Stocks
 - [ ] Import NYSE + NASDAQ tickers (~8,000)
 - [ ] Batch metadata import (respect rate limits)
-- [ ] Daily price update cron job
 
 ### European Stocks
 - [ ] Import London, Frankfurt, Paris, Helsinki, Copenhagen, Oslo
 - [ ] Handle multi-exchange stocks (same company, different tickers)
 - [ ] Currency tracking (SEK, USD, EUR, GBP, etc.)
+
+---
+
+## Phase 2: Scale 📈
 
 ### OpenFIGI Integration
 - [ ] ISIN ↔ ticker mapping for all imported stocks
@@ -129,4 +132,4 @@
 - **Graph is a JSON file** initially (like topprecept), migrate to DB later if needed.
 - **Piccolo constraints** — 8GB RAM, so be mindful of batch sizes during imports.
 - **yfinance rate limits** — throttle requests, use batch downloads where possible.
-- **Priority:** Get Swedish stocks + search API working ASAP for the savr-vibe competition (deadline March 26).
+- **Priority:** Get Swedish + US + European stocks + search API working ASAP for the savr-vibe competition (deadline March 26).
