@@ -108,9 +108,10 @@ The graph is built through a combination of:
 
 ## Tech Stack
 
-- **Python** — data ingestion workers (yfinance, requests)
-- **Node.js** — REST API server
+- **TypeScript** — everything (workers, API, shared types)
+- **Node.js** — runtime for workers and API server
 - **PostgreSQL** — storage + event log
+- **yahoo-finance2** — stock data ingestion (TS-native yfinance alternative)
 - **JSON** — knowledge graph (like recipe_graph.json)
 
 ## Related Projects
