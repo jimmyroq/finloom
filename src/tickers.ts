@@ -1,10 +1,5 @@
-import YahooFinance from "yahoo-finance2";
-import { readFile } from "node:fs/promises";
+import { writeFile, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-
-const yahooFinance = new YahooFinance({
-  suppressNotices: ["yahooSurvey", "ripHistorical"],
-});
 
 export interface ExchangeConfig {
   name: string;
@@ -14,6 +9,7 @@ export interface ExchangeConfig {
 
 export const EXCHANGES: ExchangeConfig[] = [
   { name: "Stockholm", suffix: ".ST", yahooExchange: "STO" },
+  { name: "First North", suffix: ".ST", yahooExchange: "NGM" },
   { name: "NYSE", suffix: "", yahooExchange: "NYQ" },
   { name: "NASDAQ", suffix: "", yahooExchange: "NMS" },
   { name: "London", suffix: ".L", yahooExchange: "LSE" },
@@ -29,7 +25,127 @@ function sleep(ms: number): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// US tickers via NASDAQ public API
+// Yahoo Finance Crumb authentication
+// ---------------------------------------------------------------------------
+
+interface YahooAuth {
+  crumb: string;
+  cookie: string;
+}
+
+async function getYahooCrumb(): Promise<YahooAuth> {
+  // Step 1: Get cookie
+  const initRes = await fetch("https://fc.yahoo.com/curveball", {
+    redirect: "manual",
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; Finloom/0.1)" },
+  });
+  const setCookies = initRes.headers.getSetCookie?.() ?? [];
+  const cookie = setCookies.map((c) => c.split(";")[0]).join("; ");
+
+  // Step 2: Get crumb
+  const crumbRes = await fetch(
+    "https://query2.finance.yahoo.com/v1/test/getcrumb",
+    {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; Finloom/0.1)",
+        Cookie: cookie,
+      },
+    },
+  );
+  const crumb = await crumbRes.text();
+
+  if (!crumb || crumb.length < 5) {
+    throw new Error("Failed to get Yahoo crumb");
+  }
+
+  return { crumb, cookie };
+}
+
+// ---------------------------------------------------------------------------
+// Yahoo Finance Screener — fetches ALL tickers for a given exchange
+// ---------------------------------------------------------------------------
+
+async function fetchTickersFromScreener(
+  exchangeCode: string,
+  auth: YahooAuth,
+): Promise<string[]> {
+  const allTickers: string[] = [];
+  const pageSize = 250;
+  let offset = 0;
+  let total = Infinity;
+
+  while (offset < total) {
+    const body = JSON.stringify({
+      size: pageSize,
+      offset,
+      sortField: "intradaymarketcap",
+      sortType: "DESC",
+      quoteType: "EQUITY",
+      query: {
+        operator: "AND",
+        operands: [
+          { operator: "eq", operands: ["exchange", exchangeCode] },
+        ],
+      },
+    });
+
+    const res = await fetch(
+      `https://query2.finance.yahoo.com/v1/finance/screener?crumb=${encodeURIComponent(auth.crumb)}`,
+      {
+        method: "POST",
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; Finloom/0.1)",
+          "Content-Type": "application/json",
+          Cookie: auth.cookie,
+        },
+        body,
+      },
+    );
+
+    if (!res.ok) {
+      console.warn(
+        `  Screener returned ${res.status} for ${exchangeCode} at offset ${offset}`,
+      );
+      break;
+    }
+
+    const json = (await res.json()) as {
+      finance?: {
+        result?: Array<{
+          total?: number;
+          quotes?: Array<{ symbol?: string }>;
+        }>;
+      };
+    };
+
+    const result = json?.finance?.result?.[0];
+    if (!result) {
+      console.warn(`  No result for ${exchangeCode} at offset ${offset}`);
+      break;
+    }
+
+    total = result.total ?? 0;
+    const quotes = result.quotes ?? [];
+
+    for (const q of quotes) {
+      if (q.symbol) {
+        allTickers.push(q.symbol);
+      }
+    }
+
+    if (quotes.length === 0) break;
+
+    offset += pageSize;
+
+    // Be nice to Yahoo
+    await sleep(300);
+  }
+
+  return allTickers;
+}
+
+// ---------------------------------------------------------------------------
+// US tickers via NASDAQ public API (faster than screener for US)
 // ---------------------------------------------------------------------------
 
 async function fetchNasdaqScreener(
@@ -58,100 +174,39 @@ async function fetchNasdaqScreener(
 }
 
 // ---------------------------------------------------------------------------
-// European tickers via Yahoo search (comprehensive query set)
+// Load/save ticker cache
 // ---------------------------------------------------------------------------
 
-function buildSearchTerms(): string[] {
-  const terms: string[] = [];
+const CACHE_FILE = "tickers-cache.json";
 
-  // Single letters
-  terms.push(..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));
-
-  // Two-letter combos (common ticker prefixes)
-  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  for (const a of letters) {
-    for (const b of letters) {
-      terms.push(a + b);
-    }
-  }
-
-  // Industry/sector terms
-  terms.push(
-    "bank", "energy", "tech", "mining", "pharma", "telecom", "oil", "auto",
-    "steel", "shipping", "food", "retail", "insurance", "defense", "industrial",
-    "media", "healthcare", "biotech", "solar", "wind", "construction",
-    "property", "finance", "invest", "capital", "holding", "group",
-    "nordic", "svenska", "norsk", "dansk",
-  );
-
-  return terms;
+interface TickerCache {
+  timestamp: string;
+  exchanges: Record<string, string[]>;
 }
 
-async function discoverExchangeTickersViaSearch(
-  exchange: ExchangeConfig,
-): Promise<string[]> {
-  const tickers = new Set<string>();
-  const terms = buildSearchTerms();
-  let queryCount = 0;
-
-  for (const term of terms) {
-    try {
-      const result = await yahooFinance.search(term, {
-        quotesCount: 50,
-        newsCount: 0,
-      });
-
-      for (const quote of result.quotes) {
-        const sym = quote.symbol as string | undefined;
-        if (
-          sym &&
-          quote.isYahooFinance &&
-          quote.quoteType === "EQUITY" &&
-          sym.endsWith(exchange.suffix)
-        ) {
-          tickers.add(sym);
-        }
-      }
-    } catch {
-      // search can fail, continue
-    }
-
-    queryCount++;
-    if (queryCount % 100 === 0) {
-      console.log(
-        `    ${exchange.name}: ${queryCount}/${terms.length} queries, ${tickers.size} tickers found`,
-      );
-    }
-
-    await sleep(150);
-  }
-
-  return Array.from(tickers);
-}
-
-// ---------------------------------------------------------------------------
-// Load tickers from optional local JSON file
-// ---------------------------------------------------------------------------
-
-async function loadTickersFromFile(
-  filePath: string,
-): Promise<Map<string, string[]>> {
-  if (!existsSync(filePath)) return new Map();
-
+async function loadCache(): Promise<TickerCache | null> {
+  if (!existsSync(CACHE_FILE)) return null;
   try {
-    const data = JSON.parse(await readFile(filePath, "utf-8")) as Record<
-      string,
-      string[]
-    >;
-    const result = new Map<string, string[]>();
-    for (const [exchange, tickers] of Object.entries(data)) {
-      result.set(exchange, tickers);
+    const data = JSON.parse(await readFile(CACHE_FILE, "utf-8")) as TickerCache;
+    // Cache valid for 24 hours
+    const age = Date.now() - new Date(data.timestamp).getTime();
+    if (age < 24 * 60 * 60 * 1000) {
+      return data;
     }
-    console.log(`  Loaded ticker overrides from ${filePath}`);
-    return result;
+    console.log("  Ticker cache expired, refreshing...");
+    return null;
   } catch {
-    return new Map();
+    return null;
   }
+}
+
+async function saveCache(exchanges: Map<string, string[]>): Promise<void> {
+  const cache: TickerCache = {
+    timestamp: new Date().toISOString(),
+    exchanges: Object.fromEntries(exchanges),
+  };
+  await writeFile(CACHE_FILE, JSON.stringify(cache, null, 2));
+  console.log(`  Cached ticker lists to ${CACHE_FILE}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -159,53 +214,73 @@ async function loadTickersFromFile(
 // ---------------------------------------------------------------------------
 
 export async function discoverAllTickers(): Promise<Map<string, string[]>> {
-  const result = new Map<string, string[]>();
-
-  // Check for local override file first (tickers.json)
-  const overrides = await loadTickersFromFile("tickers.json");
-  if (overrides.size > 0) {
-    console.log("  Using ticker list from tickers.json");
-    for (const [exchange, tickers] of overrides) {
+  // Check cache first
+  const cached = await loadCache();
+  if (cached) {
+    console.log("  Using cached ticker lists");
+    const result = new Map<string, string[]>();
+    for (const [exchange, tickers] of Object.entries(cached.exchanges)) {
       result.set(exchange, tickers);
     }
-    const missing = EXCHANGES.filter((e) => !result.has(e.name));
-    if (missing.length === 0) return result;
-    console.log(
-      `  Still need to discover: ${missing.map((e) => e.name).join(", ")}`,
-    );
+    return result;
   }
 
-  // US stocks — NASDAQ API
-  if (!result.has("NYSE")) {
-    console.log("Fetching NYSE tickers from NASDAQ API...");
-    const nyse = await fetchNasdaqScreener("nyse");
-    console.log(`  Found ${nyse.length} NYSE tickers`);
-    result.set("NYSE", nyse);
-    await sleep(1000);
+  // Check for manual override file
+  if (existsSync("tickers.json")) {
+    try {
+      const data = JSON.parse(
+        await readFile("tickers.json", "utf-8"),
+      ) as Record<string, string[]>;
+      console.log("  Using ticker list from tickers.json");
+      const result = new Map<string, string[]>();
+      for (const [exchange, tickers] of Object.entries(data)) {
+        result.set(exchange, tickers);
+      }
+      return result;
+    } catch {
+      // fall through
+    }
   }
 
-  if (!result.has("NASDAQ")) {
-    console.log("Fetching NASDAQ tickers from NASDAQ API...");
-    const nasdaq = await fetchNasdaqScreener("nasdaq");
-    console.log(`  Found ${nasdaq.length} NASDAQ tickers`);
-    result.set("NASDAQ", nasdaq);
-    await sleep(1000);
-  }
+  const result = new Map<string, string[]>();
 
-  // European exchanges — Yahoo search discovery
-  const europeanExchanges = EXCHANGES.filter(
-    (e) => e.suffix !== "" && !result.has(e.name),
+  // US stocks — NASDAQ API (faster)
+  console.log("Fetching NYSE tickers from NASDAQ API...");
+  const nyse = await fetchNasdaqScreener("nyse");
+  console.log(`  Found ${nyse.length} NYSE tickers`);
+  result.set("NYSE", nyse);
+  await sleep(1000);
+
+  console.log("Fetching NASDAQ tickers from NASDAQ API...");
+  const nasdaq = await fetchNasdaqScreener("nasdaq");
+  console.log(`  Found ${nasdaq.length} NASDAQ tickers`);
+  result.set("NASDAQ", nasdaq);
+  await sleep(1000);
+
+  // All other exchanges — Yahoo Screener
+  console.log("Authenticating with Yahoo Finance...");
+  const auth = await getYahooCrumb();
+  console.log("  Got crumb, fetching exchange lists...");
+
+  const screenerExchanges = EXCHANGES.filter(
+    (e) => e.name !== "NYSE" && e.name !== "NASDAQ",
   );
 
-  for (const exchange of europeanExchanges) {
+  for (const exchange of screenerExchanges) {
     console.log(
-      `Discovering ${exchange.name} (${exchange.suffix}) tickers via Yahoo search...`,
+      `Fetching ${exchange.name} (${exchange.yahooExchange}) tickers...`,
     );
-    const tickers = await discoverExchangeTickersViaSearch(exchange);
+    const tickers = await fetchTickersFromScreener(
+      exchange.yahooExchange,
+      auth,
+    );
     console.log(`  Found ${tickers.length} ${exchange.name} tickers`);
     result.set(exchange.name, tickers);
-    await sleep(1000);
+    await sleep(500);
   }
+
+  // Save cache
+  await saveCache(result);
 
   return result;
 }
