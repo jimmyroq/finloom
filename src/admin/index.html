@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Finloom Admin</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d1117; --bg2: #161b22; --bg3: #21262d; --border: #30363d;
+    --text: #c9d1d9; --text2: #8b949e; --accent: #58a6ff; --green: #3fb950;
+    --red: #f85149; --yellow: #d29922;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+  a { color: var(--accent); text-decoration: none; }
+
+  .container { max-width: 1400px; margin: 0 auto; padding: 16px; }
+
+  /* Header */
+  header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 12px 0; margin-bottom: 16px; }
+  header .container { display: flex; align-items: center; gap: 16px; }
+  header h1 { font-size: 18px; font-weight: 600; }
+  header h1 span { color: var(--text2); font-weight: 400; }
+
+  /* Stats cards */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .stat-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 16px; }
+  .stat-card .label { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-card .value { font-size: 28px; font-weight: 600; margin-top: 4px; }
+
+  /* Controls */
+  .controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .controls input, .controls select {
+    background: var(--bg2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 8px 12px; font-size: 14px; outline: none;
+  }
+  .controls input:focus, .controls select:focus { border-color: var(--accent); }
+  .controls input { flex: 1; min-width: 200px; }
+  .controls select { min-width: 140px; }
+
+  /* Table */
+  .table-wrap { background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  thead th {
+    text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border);
+    font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text2); cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  thead th:hover { color: var(--text); }
+  thead th.sorted { color: var(--accent); }
+  thead th .arrow { font-size: 10px; margin-left: 4px; }
+  tbody tr { border-bottom: 1px solid var(--border); cursor: pointer; }
+  tbody tr:hover { background: var(--bg3); }
+  tbody td { padding: 8px 12px; white-space: nowrap; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+  .ticker { font-weight: 600; color: var(--accent); }
+  .muted { color: var(--text2); }
+
+  /* Pagination */
+  .pagination { display: flex; align-items: center; justify-content: space-between; padding: 12px; font-size: 13px; color: var(--text2); }
+  .pagination button {
+    background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 13px;
+  }
+  .pagination button:hover { background: var(--border); }
+  .pagination button:disabled { opacity: 0.4; cursor: default; }
+  .page-btns { display: flex; gap: 4px; }
+
+  /* Detail panel */
+  .detail-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; }
+  .detail-overlay.open { display: flex; justify-content: center; align-items: flex-start; padding-top: 60px; }
+  .detail-panel {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+    width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; padding: 24px;
+  }
+  .detail-panel h2 { font-size: 20px; margin-bottom: 4px; }
+  .detail-panel .sub { color: var(--text2); margin-bottom: 16px; }
+  .detail-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .detail-meta .item { }
+  .detail-meta .item .label { font-size: 11px; color: var(--text2); text-transform: uppercase; }
+  .detail-meta .item .val { font-size: 15px; font-weight: 500; }
+  .detail-desc { color: var(--text2); font-size: 13px; line-height: 1.6; margin-bottom: 20px; }
+  .chart-container { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 16px; }
+  .chart-container h3 { font-size: 13px; color: var(--text2); margin-bottom: 8px; }
+  .close-btn {
+    position: absolute; top: 12px; right: 16px; background: none; border: none;
+    color: var(--text2); font-size: 24px; cursor: pointer;
+  }
+  .close-btn:hover { color: var(--text); }
+  .detail-wrapper { position: relative; }
+
+  /* Loading */
+  .loading { text-align: center; padding: 40px; color: var(--text2); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <h1>Finloom <span>Admin</span></h1>
+  </div>
+</header>
+
+<div class="container">
+  <div class="stats" id="stats">
+    <div class="stat-card"><div class="label">Stocks</div><div class="value" id="stat-stocks">-</div></div>
+    <div class="stat-card"><div class="label">Price points</div><div class="value" id="stat-prices">-</div></div>
+    <div class="stat-card"><div class="label">Exchanges</div><div class="value" id="stat-exchanges">-</div></div>
+    <div class="stat-card"><div class="label">Last import</div><div class="value" id="stat-import" style="font-size:16px">-</div></div>
+  </div>
+
+  <div class="controls">
+    <input type="text" id="search" placeholder="Search ticker or name..." autocomplete="off">
+    <select id="filter-exchange"><option value="">All exchanges</option></select>
+    <select id="filter-sector"><option value="">All sectors</option></select>
+    <select id="filter-country"><option value="">All countries</option></select>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th data-sort="ticker">Ticker <span class="arrow"></span></th>
+          <th data-sort="name">Name <span class="arrow"></span></th>
+          <th data-sort="exchange">Exchange <span class="arrow"></span></th>
+          <th data-sort="sector">Sector <span class="arrow"></span></th>
+          <th data-sort="country">Country <span class="arrow"></span></th>
+          <th>Currency</th>
+          <th data-sort="market_cap" class="num">Market Cap <span class="arrow"></span></th>
+          <th class="num">Price</th>
+          <th class="num">Change</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="pagination">
+      <span id="page-info"></span>
+      <div class="page-btns">
+        <button id="prev-btn" onclick="changePage(-1)">Prev</button>
+        <button id="next-btn" onclick="changePage(1)">Next</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="detail-overlay" id="detail-overlay" onclick="if(event.target===this)closeDetail()">
+  <div class="detail-panel">
+    <div class="detail-wrapper">
+      <button class="close-btn" onclick="closeDetail()">&times;</button>
+      <h2 id="detail-title"></h2>
+      <div class="sub" id="detail-sub"></div>
+      <div class="detail-meta" id="detail-meta"></div>
+      <div class="detail-desc" id="detail-desc"></div>
+      <div class="chart-container">
+        <h3>Price History (1Y)</h3>
+        <canvas id="chart" width="740" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let state = { page: 1, sort: 'ticker', order: 'asc', q: '', exchange: '', sector: '', country: '' };
+  let debounceTimer;
+
+  // Init
+  loadStats();
+  loadFilters();
+  loadStocks();
+
+  // Search
+  document.getElementById('search').addEventListener('input', (e) => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => { state.q = e.target.value; state.page = 1; loadStocks(); }, 300);
+  });
+
+  // Filters
+  ['exchange', 'sector', 'country'].forEach(f => {
+    document.getElementById('filter-' + f).addEventListener('change', (e) => {
+      state[f] = e.target.value; state.page = 1; loadStocks();
+    });
+  });
+
+  // Sort
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.sort;
+      if (state.sort === col) {
+        state.order = state.order === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.sort = col; state.order = 'asc';
+      }
+      state.page = 1; loadStocks();
+      document.querySelectorAll('th').forEach(t => { t.classList.remove('sorted'); t.querySelector('.arrow') && (t.querySelector('.arrow').textContent = ''); });
+      th.classList.add('sorted');
+      th.querySelector('.arrow').textContent = state.order === 'asc' ? ' ▲' : ' ▼';
+    });
+  });
+
+  async function loadStats() {
+    try {
+      const r = await fetch('/api/stats');
+      const d = await r.json();
+      document.getElementById('stat-stocks').textContent = fmt(d.total_stocks);
+      document.getElementById('stat-prices').textContent = fmt(d.total_prices);
+      document.getElementById('stat-exchanges').textContent = d.exchanges.length;
+      document.getElementById('stat-import').textContent = d.last_import ? new Date(d.last_import).toLocaleDateString() : '-';
+    } catch (e) { console.error('Stats error', e); }
+  }
+
+  async function loadFilters() {
+    try {
+      const [exchanges, sectors, countries] = await Promise.all([
+        fetch('/api/exchanges').then(r => r.json()),
+        fetch('/api/sectors').then(r => r.json()),
+        fetch('/api/countries').then(r => r.json()),
+      ]);
+      populateSelect('filter-exchange', exchanges, 'exchange');
+      populateSelect('filter-sector', sectors, 'sector');
+      populateSelect('filter-country', countries, 'country');
+    } catch (e) { console.error('Filters error', e); }
+  }
+
+  function populateSelect(id, items, key) {
+    const sel = document.getElementById(id);
+    items.forEach(item => {
+      const opt = document.createElement('option');
+      opt.value = item[key];
+      opt.textContent = `${item[key]} (${item.count})`;
+      sel.appendChild(opt);
+    });
+  }
+
+  async function loadStocks() {
+    const tbody = document.getElementById('tbody');
+    tbody.innerHTML = '<tr><td colspan="9" class="loading">Loading...</td></tr>';
+    try {
+      const params = new URLSearchParams({
+        page: state.page, limit: 50, sort: state.sort, order: state.order,
+      });
+      if (state.q) params.set('q', state.q);
+      if (state.exchange) params.set('exchange', state.exchange);
+      if (state.sector) params.set('sector', state.sector);
+      if (state.country) params.set('country', state.country);
+
+      const r = await fetch('/api/stocks?' + params);
+      const d = await r.json();
+
+      tbody.innerHTML = '';
+      if (d.stocks.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">No stocks found</td></tr>';
+      }
+      d.stocks.forEach(s => {
+        const tr = document.createElement('tr');
+        tr.onclick = () => openDetail(s.ticker);
+        const chg = s.change_pct != null ? `<span class="${s.change_pct >= 0 ? 'pos' : 'neg'}">${s.change_pct >= 0 ? '+' : ''}${s.change_pct}%</span>` : '<span class="muted">-</span>';
+        tr.innerHTML = `
+          <td class="ticker">${esc(s.ticker)}</td>
+          <td>${esc(s.name)}</td>
+          <td>${esc(s.exchange)}</td>
+          <td class="muted">${esc(s.sector || '-')}</td>
+          <td class="muted">${esc(s.country || '-')}</td>
+          <td class="muted">${esc(s.currency)}</td>
+          <td class="num">${s.market_cap ? fmtCap(s.market_cap) : '<span class="muted">-</span>'}</td>
+          <td class="num">${s.latest_price != null ? Number(s.latest_price).toFixed(2) : '<span class="muted">-</span>'}</td>
+          <td class="num">${chg}</td>`;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('page-info').textContent = `${fmt(d.total)} stocks · Page ${d.page} of ${d.pages}`;
+      document.getElementById('prev-btn').disabled = d.page <= 1;
+      document.getElementById('next-btn').disabled = d.page >= d.pages;
+    } catch (e) {
+      tbody.innerHTML = '<tr><td colspan="9" class="loading">Error loading stocks</td></tr>';
+      console.error(e);
+    }
+  }
+
+  function changePage(delta) { state.page += delta; loadStocks(); }
+
+  async function openDetail(ticker) {
+    const overlay = document.getElementById('detail-overlay');
+    overlay.classList.add('open');
+    document.getElementById('detail-title').textContent = 'Loading...';
+    document.getElementById('detail-sub').textContent = '';
+    document.getElementById('detail-meta').innerHTML = '';
+    document.getElementById('detail-desc').textContent = '';
+
+    try {
+      const [stock, prices] = await Promise.all([
+        fetch('/api/stocks/' + encodeURIComponent(ticker)).then(r => r.json()),
+        fetch('/api/stocks/' + encodeURIComponent(ticker) + '/prices?from=' + yearAgo()).then(r => r.json()),
+      ]);
+
+      document.getElementById('detail-title').textContent = `${stock.ticker} — ${stock.name}`;
+      document.getElementById('detail-sub').textContent = `${stock.exchange} · ${stock.currency} · ${stock.country}`;
+
+      const meta = [
+        { label: 'Sector', val: stock.sector || '-' },
+        { label: 'Industry', val: stock.industry || '-' },
+        { label: 'Market Cap', val: stock.market_cap ? fmtCap(stock.market_cap) : '-' },
+        { label: 'Latest Price', val: stock.latest_price != null ? Number(stock.latest_price).toFixed(2) + ' ' + stock.currency : '-' },
+        { label: 'Price Points', val: fmt(parseInt(stock.price_count)) },
+        { label: 'Last Price Date', val: stock.latest_date || '-' },
+      ];
+      document.getElementById('detail-meta').innerHTML = meta.map(m =>
+        `<div class="item"><div class="label">${m.label}</div><div class="val">${esc(String(m.val))}</div></div>`
+      ).join('');
+
+      document.getElementById('detail-desc').textContent = stock.description || '';
+
+      drawChart(prices);
+    } catch (e) {
+      document.getElementById('detail-title').textContent = 'Error loading stock';
+      console.error(e);
+    }
+  }
+
+  function closeDetail() { document.getElementById('detail-overlay').classList.remove('open'); }
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDetail(); });
+
+  function drawChart(prices) {
+    const canvas = document.getElementById('chart');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    if (!prices || prices.length < 2) {
+      ctx.fillStyle = '#8b949e'; ctx.font = '14px sans-serif';
+      ctx.fillText('Not enough data', W / 2 - 50, H / 2);
+      return;
+    }
+    const closes = prices.map(p => Number(p.close));
+    const min = Math.min(...closes), max = Math.max(...closes);
+    const range = max - min || 1;
+    const pad = 10;
+
+    // Line
+    ctx.beginPath();
+    ctx.strokeStyle = closes[closes.length - 1] >= closes[0] ? '#3fb950' : '#f85149';
+    ctx.lineWidth = 1.5;
+    closes.forEach((c, i) => {
+      const x = pad + (i / (closes.length - 1)) * (W - pad * 2);
+      const y = pad + (1 - (c - min) / range) * (H - pad * 2);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Fill
+    const lastX = pad + (W - pad * 2);
+    ctx.lineTo(lastX, H - pad);
+    ctx.lineTo(pad, H - pad);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    const color = closes[closes.length - 1] >= closes[0] ? '63, 185, 80' : '248, 81, 73';
+    grad.addColorStop(0, `rgba(${color}, 0.15)`);
+    grad.addColorStop(1, `rgba(${color}, 0)`);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Labels
+    ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif';
+    ctx.fillText(max.toFixed(1), 4, pad + 10);
+    ctx.fillText(min.toFixed(1), 4, H - pad - 2);
+    ctx.fillText(prices[0].date, pad, H - 1);
+    const lastDate = prices[prices.length - 1].date;
+    ctx.fillText(lastDate, W - pad - ctx.measureText(lastDate).width, H - 1);
+  }
+
+  // Helpers
+  function fmt(n) { return n != null ? n.toLocaleString() : '-'; }
+  function fmtCap(n) {
+    n = Number(n);
+    if (n >= 1e12) return (n / 1e12).toFixed(1) + 'T';
+    if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(0) + 'K';
+    return String(n);
+  }
+  function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  function yearAgo() { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0, 10); }
+</script>
+</body>
+</html>
