@@ -50,6 +50,33 @@ async function migrate() {
   `);
   console.log("  stock_events table ready");
 
+  await query(`
+    CREATE TABLE IF NOT EXISTS indices (
+      id SERIAL PRIMARY KEY,
+      name TEXT UNIQUE NOT NULL,
+      label TEXT NOT NULL,
+      yahoo_ticker TEXT NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'SEK',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  console.log("  indices table ready");
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS index_prices (
+      id SERIAL PRIMARY KEY,
+      index_id INT NOT NULL REFERENCES indices(id) ON DELETE CASCADE,
+      date DATE NOT NULL,
+      open NUMERIC,
+      high NUMERIC,
+      low NUMERIC,
+      close NUMERIC NOT NULL,
+      volume BIGINT DEFAULT 0,
+      UNIQUE (index_id, date)
+    )
+  `);
+  console.log("  index_prices table ready");
+
   // Indexes for performance
   await query(`CREATE INDEX IF NOT EXISTS idx_stock_prices_stock_date ON stock_prices(stock_id, date)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_stock_events_entity ON stock_events(entity_type, entity_id)`);
@@ -57,6 +84,8 @@ async function migrate() {
   await query(`CREATE INDEX IF NOT EXISTS idx_stocks_exchange ON stocks(exchange)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_stocks_sector ON stocks(sector)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_stocks_country ON stocks(country)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_stocks_industry ON stocks(industry)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_index_prices_index_date ON index_prices(index_id, date)`);
   console.log("  indexes ready");
 
   console.log("Migrations complete.");

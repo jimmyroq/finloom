@@ -97,6 +97,70 @@ app.get("/api/currencies", async (_req, res) => {
   }
 });
 
+// --- Index endpoints ---
+
+app.get("/api/indices", async (_req, res) => {
+  try {
+    const result = await query(
+      `SELECT i.name, i.label, i.currency,
+              lp.close as latest_price, lp.date as latest_date,
+              pp.close as prev_close,
+              CASE WHEN pp.close > 0 THEN ROUND(((lp.close - pp.close) / pp.close * 100)::numeric, 2) ELSE NULL END as change_pct
+       FROM indices i
+       LEFT JOIN LATERAL (
+         SELECT close, date FROM index_prices WHERE index_id = i.id ORDER BY date DESC LIMIT 1
+       ) lp ON true
+       LEFT JOIN LATERAL (
+         SELECT close FROM index_prices WHERE index_id = i.id ORDER BY date DESC OFFSET 1 LIMIT 1
+       ) pp ON true
+       ORDER BY i.id`,
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+app.get("/api/indices/:name/prices", async (req, res) => {
+  try {
+    const indexResult = await query("SELECT id FROM indices WHERE name = $1", [
+      req.params.name.toUpperCase(),
+    ]);
+    if (indexResult.rows.length === 0) {
+      return res.status(404).json({ error: "Index not found" });
+    }
+    const indexId = indexResult.rows[0].id;
+
+    const conditions = ["index_id = $1"];
+    const params: unknown[] = [indexId];
+    let paramIdx = 2;
+
+    if (req.query.from) {
+      conditions.push(`date >= $${paramIdx}`);
+      params.push(req.query.from);
+      paramIdx++;
+    }
+    if (req.query.to) {
+      conditions.push(`date <= $${paramIdx}`);
+      params.push(req.query.to);
+      paramIdx++;
+    }
+
+    const result = await query(
+      `SELECT date, open, high, low, close, volume
+       FROM index_prices
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY date ASC`,
+      params,
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// --- Stock endpoints ---
+
 app.get("/api/stocks", async (req, res) => {
   try {
     const page = Math.max(1, parseInt(String(req.query.page)) || 1);
