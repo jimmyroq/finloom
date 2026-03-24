@@ -75,6 +75,28 @@ app.get("/api/countries", async (_req, res) => {
   }
 });
 
+app.get("/api/industries", async (_req, res) => {
+  try {
+    const result = await query(
+      "SELECT industry, COUNT(*) as count FROM stocks WHERE industry != '' GROUP BY industry ORDER BY count DESC",
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+app.get("/api/currencies", async (_req, res) => {
+  try {
+    const result = await query(
+      "SELECT currency, COUNT(*) as count FROM stocks WHERE currency != '' GROUP BY currency ORDER BY count DESC",
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 app.get("/api/stocks", async (req, res) => {
   try {
     const page = Math.max(1, parseInt(String(req.query.page)) || 1);
@@ -103,19 +125,39 @@ app.get("/api/stocks", async (req, res) => {
       params.push(`%${req.query.q}%`);
       paramIdx++;
     }
-    if (req.query.exchange) {
-      conditions.push(`s.exchange = $${paramIdx}`);
-      params.push(req.query.exchange);
+
+    // Multi-value filters: support comma-separated values (OR logic)
+    const multiValueFilter = (field: string, queryParam: unknown) => {
+      if (!queryParam) return;
+      const values = String(queryParam).split(",").map((v) => v.trim()).filter(Boolean);
+      if (values.length === 0) return;
+      if (values.length === 1) {
+        conditions.push(`s.${field} = $${paramIdx}`);
+        params.push(values[0]);
+        paramIdx++;
+      } else {
+        const placeholders = values.map((_, i) => `$${paramIdx + i}`).join(", ");
+        conditions.push(`s.${field} IN (${placeholders})`);
+        params.push(...values);
+        paramIdx += values.length;
+      }
+    };
+
+    multiValueFilter("exchange", req.query.exchange);
+    multiValueFilter("sector", req.query.sector);
+    multiValueFilter("country", req.query.country);
+    multiValueFilter("industry", req.query.industry);
+    multiValueFilter("currency", req.query.currency);
+
+    // Market cap range filters
+    if (req.query.market_cap_min) {
+      conditions.push(`s.market_cap >= $${paramIdx}`);
+      params.push(parseInt(String(req.query.market_cap_min)));
       paramIdx++;
     }
-    if (req.query.sector) {
-      conditions.push(`s.sector = $${paramIdx}`);
-      params.push(req.query.sector);
-      paramIdx++;
-    }
-    if (req.query.country) {
-      conditions.push(`s.country = $${paramIdx}`);
-      params.push(req.query.country);
+    if (req.query.market_cap_max) {
+      conditions.push(`s.market_cap <= $${paramIdx}`);
+      params.push(parseInt(String(req.query.market_cap_max)));
       paramIdx++;
     }
 
