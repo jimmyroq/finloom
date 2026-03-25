@@ -190,19 +190,19 @@ app.get("/api/stocks", async (req, res) => {
       paramIdx++;
     }
 
-    // Multi-value filters: support comma-separated values (OR logic)
+    // Multi-value filters: support comma-separated values (OR logic), case-insensitive
     const multiValueFilter = (field: string, queryParam: unknown) => {
       if (!queryParam) return;
       const values = String(queryParam).split(",").map((v) => v.trim()).filter(Boolean);
       if (values.length === 0) return;
       if (values.length === 1) {
-        conditions.push(`s.${field} = $${paramIdx}`);
+        conditions.push(`LOWER(s.${field}) = LOWER($${paramIdx})`);
         params.push(values[0]);
         paramIdx++;
       } else {
         const placeholders = values.map((_, i) => `$${paramIdx + i}`).join(", ");
-        conditions.push(`s.${field} IN (${placeholders})`);
-        params.push(...values);
+        conditions.push(`LOWER(s.${field}) IN (${placeholders})`);
+        params.push(...values.map((v) => v.toLowerCase()));
         paramIdx += values.length;
       }
     };
