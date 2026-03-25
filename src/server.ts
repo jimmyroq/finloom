@@ -220,11 +220,37 @@ app.get("/api/stocks", async (req, res) => {
       }
     };
 
+    // Exclude filters: _not suffix (NOT IN)
+    const excludeFilter = (field: string, queryParam: unknown) => {
+      if (!queryParam) return;
+      const values = String(queryParam).split(",").map((v) => v.trim()).filter(Boolean);
+      if (values.length === 0) return;
+      const resolved = field === "sector"
+        ? values.map((v) => SECTOR_ALIASES[v.toLowerCase()] ?? v.toLowerCase())
+        : values.map((v) => v.toLowerCase());
+      if (resolved.length === 1) {
+        conditions.push(`LOWER(s.${field}) != $${paramIdx}`);
+        params.push(resolved[0]);
+        paramIdx++;
+      } else {
+        const placeholders = resolved.map((_, i) => `$${paramIdx + i}`).join(", ");
+        conditions.push(`LOWER(s.${field}) NOT IN (${placeholders})`);
+        params.push(...resolved);
+        paramIdx += resolved.length;
+      }
+    };
+
     multiValueFilter("exchange", req.query.exchange);
     multiValueFilter("sector", req.query.sector);
     multiValueFilter("country", req.query.country);
     multiValueFilter("industry", req.query.industry);
     multiValueFilter("currency", req.query.currency);
+
+    excludeFilter("exchange", req.query.exchange_not);
+    excludeFilter("sector", req.query.sector_not);
+    excludeFilter("country", req.query.country_not);
+    excludeFilter("industry", req.query.industry_not);
+    excludeFilter("currency", req.query.currency_not);
 
     // Market cap range filters
     if (req.query.market_cap_min) {
