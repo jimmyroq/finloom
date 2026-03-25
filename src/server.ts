@@ -190,20 +190,33 @@ app.get("/api/stocks", async (req, res) => {
       paramIdx++;
     }
 
+    // Sector alias mapping: common financial labels → Finloom names
+    const SECTOR_ALIASES: Record<string, string> = {
+      "financials": "financial services",
+      "consumer discretionary": "consumer cyclical",
+      "consumer staples": "consumer defensive",
+      "materials": "basic materials",
+    };
+
     // Multi-value filters: support comma-separated values (OR logic), case-insensitive
     const multiValueFilter = (field: string, queryParam: unknown) => {
       if (!queryParam) return;
       const values = String(queryParam).split(",").map((v) => v.trim()).filter(Boolean);
       if (values.length === 0) return;
-      if (values.length === 1) {
-        conditions.push(`LOWER(s.${field}) = LOWER($${paramIdx})`);
-        params.push(values[0]);
+      // Apply sector aliases
+      const resolved = field === "sector"
+        ? values.map((v) => SECTOR_ALIASES[v.toLowerCase()] ?? v.toLowerCase())
+        : values.map((v) => v.toLowerCase());
+
+      if (resolved.length === 1) {
+        conditions.push(`LOWER(s.${field}) = $${paramIdx}`);
+        params.push(resolved[0]);
         paramIdx++;
       } else {
-        const placeholders = values.map((_, i) => `$${paramIdx + i}`).join(", ");
+        const placeholders = resolved.map((_, i) => `$${paramIdx + i}`).join(", ");
         conditions.push(`LOWER(s.${field}) IN (${placeholders})`);
-        params.push(...values.map((v) => v.toLowerCase()));
-        paramIdx += values.length;
+        params.push(...resolved);
+        paramIdx += resolved.length;
       }
     };
 
