@@ -8,6 +8,15 @@ const PORT = 3100;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// CORS for production frontends
+app.use((_req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+  if (_req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
 // Serve admin UI
 app.get("/", (_req, res) => {
   res.sendFile(path.join(__dirname, "admin", "index.html"));
