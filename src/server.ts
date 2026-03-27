@@ -36,7 +36,7 @@ app.get("/api/stats", async (_req, res) => {
         "SELECT sector, COUNT(*) as count FROM stocks WHERE sector != '' GROUP BY sector ORDER BY count DESC",
       ),
       query(
-        "SELECT MAX(created_at) as last_import FROM stock_events WHERE event_type = 'stock_created'",
+        "SELECT MAX(date) as last_import FROM stock_prices",
       ),
     ]);
     res.json({
