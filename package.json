@@ -9,6 +9,7 @@
     "migrate": "node --import tsx src/schema.ts",
     "import": "node --import tsx src/import.ts",
     "update": "node --import tsx src/update.ts",
+    "backfill": "node --import tsx src/backfill.ts",
     "import-indices": "node --import tsx src/import-indices.ts",
     "setup": "npm run setup-db && npm run migrate",
     "serve": "node --import tsx src/server.ts"

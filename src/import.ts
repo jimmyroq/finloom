@@ -96,14 +96,14 @@ async function importStock(
       exchange: exchange.yahooExchange,
     });
 
-    // Fetch 1 year of daily prices via chart()
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    // Fetch 5 years of daily prices via chart()
+    const fiveYearsAgo = new Date();
+    fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
 
     let priceCount = 0;
     try {
       const chartResult = await yahooFinance.chart(ticker, {
-        period1: oneYearAgo.toISOString().split("T")[0],
+        period1: fiveYearsAgo.toISOString().split("T")[0],
         interval: "1d",
       });
 
