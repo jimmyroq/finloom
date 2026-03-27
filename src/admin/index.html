@@ -108,7 +108,7 @@
     <div class="stat-card"><div class="label">Stocks</div><div class="value" id="stat-stocks">-</div></div>
     <div class="stat-card"><div class="label">Price points</div><div class="value" id="stat-prices">-</div></div>
     <div class="stat-card"><div class="label">Exchanges</div><div class="value" id="stat-exchanges">-</div></div>
-    <div class="stat-card"><div class="label">Last import</div><div class="value" id="stat-import" style="font-size:16px">-</div></div>
+    <div class="stat-card"><div class="label">Last import</div><div class="value" id="stat-import">-</div></div>
   </div>
 
   <div class="controls">
@@ -206,7 +206,7 @@
       document.getElementById('stat-stocks').textContent = fmt(d.total_stocks);
       document.getElementById('stat-prices').textContent = fmt(d.total_prices);
       document.getElementById('stat-exchanges').textContent = d.exchanges.length;
-      document.getElementById('stat-import').textContent = d.last_import ? new Date(d.last_import).toLocaleDateString() : '-';
+      document.getElementById('stat-import').textContent = d.last_import ? d.last_import.slice(0, 10) : '-';
     } catch (e) { console.error('Stats error', e); }
   }
 
