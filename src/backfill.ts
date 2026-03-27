@@ -53,8 +53,16 @@ async function backfillStock(
       interval: "1d",
     });
 
-    const prices = chartResult.quotes;
-    if (!prices || prices.length === 0) {
+    // Deduplicate by date (Yahoo sometimes returns duplicates)
+    const priceMap = new Map<string, (typeof chartResult.quotes)[0]>();
+    for (const p of chartResult.quotes) {
+      if (p.close == null) continue;
+      const dateKey = new Date(p.date).toISOString().split("T")[0];
+      priceMap.set(dateKey, p);
+    }
+    const prices = Array.from(priceMap.values());
+
+    if (prices.length === 0) {
       return 0;
     }
 
@@ -71,7 +79,6 @@ async function backfillStock(
 
         for (let j = 0; j < batch.length; j++) {
           const p = batch[j];
-          if (p.close == null) continue;
           const offset = placeholders.length * 8;
           placeholders.push(
             `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`

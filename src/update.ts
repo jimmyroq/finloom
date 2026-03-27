@@ -60,7 +60,15 @@ async function main() {
         interval: "1d",
       });
 
-      const prices = chartResult.quotes.filter((p) => p.close != null);
+      const rawPrices = chartResult.quotes.filter((p) => p.close != null);
+
+      // Deduplicate by date (Yahoo sometimes returns duplicates)
+      const priceMap = new Map<string, (typeof rawPrices)[0]>();
+      for (const p of rawPrices) {
+        const dateKey = new Date(p.date).toISOString().split("T")[0];
+        priceMap.set(dateKey, p);
+      }
+      const prices = Array.from(priceMap.values());
 
       if (prices.length === 0) {
         noData++;
