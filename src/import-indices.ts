@@ -17,8 +17,8 @@ const INDICES = [
 async function importIndices() {
   console.log("=== Finloom Index Import ===\n");
 
-  const oneYearAgo = new Date();
-  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+  const fiveYearsAgo = new Date();
+  fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
 
   for (const idx of INDICES) {
     console.log(`Importing ${idx.name} (${idx.yahoo})...`);
@@ -36,7 +36,7 @@ async function importIndices() {
 
     try {
       const history = await yahooFinance.chart(idx.yahoo, {
-        period1: oneYearAgo.toISOString().split("T")[0],
+        period1: fiveYearsAgo.toISOString().split("T")[0],
         interval: "1d",
       });
 
